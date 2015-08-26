@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+  <title>Email Textarea</title>
+
+  <style>
+    body {font-family: sans-serif;}
+    label, .block, button {display: block;}
+    textarea, .email-addresses {width: 360px; min-height: 90px;}
+    .email-addresses {background-color: #EEE;}
+    textarea, button, .email-addresses {margin-bottom: 2em;}
+    .succeeded {color: green;}
+    .failure {color: red;}
+    .email, .email-warnings {background-color: azure; margin: 2px 3px; padding: 2px 4px; display: inline-block;}
+    .email-warnings {background-color: white; color: red;}
+  </style>
+
+</head>
+
+<body>
+
+  <label for="email-textarea">Email addresses to format:</label>
+  <textarea id="email-textarea"></textarea>
+  <button id="populate-values" onclick="PopulateValues('email-textarea', 'email-addresses');">Format Email Addresses</button>
+
+  <span class="block">Formatted email addresses:</span>
+  <div class="email-addresses" id="email-addresses"></div>
+
+  <button id="run-tests" onclick="RunTests('test-results');">Run Tests</button>
+  <div id="test-results"></div>
+
+
+<script>
+
+
+function PopulateValues(sourceId, targetId) {
+
+  var source = document.getElementById(sourceId);
+
+  var emails = ParseEmails(source.value);
+  console.log(emails);
+
+  var html = "";
+
+  for(var i = 1; i < emails.length; i++) {
+
+    html += "<span class=\"email\">\"" + emails[i].name + "\" &lt;<a href=\"mailto:" + emails[i].email + "\">" + emails[i].email + "</a>&gt;";
+
+    if(i != emails.length - 1) {
+      html += ";";
+    }
+
+    html += "</span>";
+  }
+
+  if(!(emails[0] == true)) { // if a warning message was passed back
+    html += "<span class=\"email-warnings\">" + emails[0] + "</span>";
+  }
+
+  var target = document.getElementById(targetId);
+  target.innerHTML = html;
+}
+
+
+// These validation functions don't handle unicode addresses, seemed outside the scope of the project with no libraries
+function ValidateDomain(name) {
+
+  if(name.length < 4 ||
+     name[0] == '.' ||
+     name[0] == '-' ||
+     name[name.length-1] == '.' ||
+     name[name.length-2] == '.' ||
+     name.indexOf('..') != -1 ||
+     name.indexOf('-.') != -1 ||
+     name.indexOf('.') == -1) {
+    return false;
+  }
+
+  return /^[a-z0-9\.-]+$/i.test(name);
+}
+
+
+function ValidateLocal(name) {
+
+  if(name.length == 0 ||
+     name[0] == '.' ||
+     name[0] == '-' ||
+     name[name.length-1] == '.' ||
+     name[name.length-1] == '-' ||
+     name.indexOf('..') != -1 ||
+     name.indexOf('-.') != -1) {
+    return false;
+  }
+
+  return /^[a-z0-9\.!#$%&'*+\/=?\^_`{|}~'-]+$/i.test(name);
+}
+
+
+function ValidateEmail(email) {
+
+  var atIndex = email.indexOf('@');
+
+  if(atIndex == -1 ||
+     atIndex == 0 ||
+     atIndex == email.length -1 ||
+     email.length - 1 - atIndex < 4) { // minimum length of tld
+    return false;
+  }
+
+  var local = email.slice(0, atIndex);
+  if(!ValidateLocal(local)) {
+    return false;
+  }
+
+  var domain = email.slice(atIndex + 1, email.length);
+  if(!ValidateDomain(domain)) {
+    return false;
+  }
+
+  return true;
+}
+
+
+function ParseEmails(addressesString) {
+
+  if(typeof addressesString == "undefined" || addressesString.indexOf('@') == -1) {
+    var result = ["No email addresses specified"];
+    return result;
+  }
+
+
+  var result = [true]; // result[0] true for complete success, otherwise warning string
+  var invalidEmails = [];
+
+
+  // matches an email (even an invalid one, so we can point out that they are invalid)
+  var regExp = /[@a-z0-9\.!#$%&'*+\/=?\^_`{|}~'-]*@+[@a-z0-9\.-]*/gi;
+  var email = "";
+  var nameIndex = 0;
+  while((email = regExp.exec(addressesString)) !== null) {
+
+    if(!ValidateEmail(email[0])) {
+      invalidEmails.push(email[0]);
+      nameIndex = email.index + email[0].length;
+      continue;
+    }
+
+    var name = addressesString.slice(nameIndex, email.index)
+    name = name.replace(/[^\w -]+/g,'');
+    name = name.trim();
+
+    result.push({name: name, email: email[0], isDuplicate: false});
+
+    nameIndex = email.index + email[0].length;
+  }
+
+
+  if(invalidEmails.length == 1) {
+    result[0] = "Invalid email address: ";
+  } else if(invalidEmails.length > 1) {
+    result[0] = "Invalid email addresses: ";
+  }
+
+  for(var i = 0; i < invalidEmails.length; i++) {
+
+    result[0] += invalidEmails[i];
+
+    if(i != invalidEmails.length - 1) {
+      result[0] += ", ";
+    }
+  }
+
+
+  // remove duplicates, preserving the one with the longest name. Remove exact matches.
+  // i = 1 since we're reserving index 0 for warnings
+  var current = "";
+  for(var i = 1; i < result.length; i++) {
+
+    if(result[i].isDuplicate) {
+      continue;
+    }
+
+    current = result[i];
+
+    for(var c = 1; c < result.length; c++) {
+      if(c != i &&
+         result[c].email == current.email &&
+         result[c].name.length <= current.name.length) {
+        result[c].isDuplicate = true;
+      }
+    }
+  }
+
+
+  // generate a new array without the items marked as duplicates
+  var retval = [result[0]];
+  for(var i = 1; i < result.length; i++) {
+    if(!result[i].isDuplicate) {
+      retval.push({name: result[i].name, email: result[i].email});
+    }
+  }
+
+
+  return retval;
+}
+
+
+tests = [
+  {
+    fn: ValidateEmail,
+    input: "1234567890abcdKLMNOPqrstuvwxyz@123gotothe.com",
+    expectedResult: true
+  },
+  {
+    fn: ValidateEmail,
+    input: "bob@example.com",
+    expectedResult: true
+  },
+  {
+    fn: ValidateEmail,
+    input: "1234567890abcdKLM><yz@123gotothe.com",
+    expectedResult: false
+  },
+  {
+    fn: ValidateEmail,
+    input: "1234567890abcdKLMNOPqrstuvwxyz@-123gotothe.com",
+    expectedResult: false
+  },
+  {
+    fn: ValidateEmail,
+    input: "hee8@test.com",
+    expectedResult: true
+  },
+  {
+    fn: ValidateEmail,
+    input: "hee8test.com",
+    expectedResult: false
+  },
+  {
+    fn: ValidateEmail,
+    input: "he..e8@test.com",
+    expectedResult: false
+  },
+  {
+    fn: ValidateEmail,
+    input: "he.e8@test.c(om",
+    expectedResult: false
+  },
+  {
+    fn: ValidateEmail,
+    input: "he.e8@testcom",
+    expectedResult: false
+  },
+  {
+    fn: ValidateEmail,
+    input: "he.e8@@test.com",
+    expectedResult: false
+  },
+  {
+    fn: ValidateEmail,
+    input: "@he.e8test.com",
+    expectedResult: false
+  },
+  {
+    fn: ValidateEmail,
+    input: "he.e8test.com@",
+    expectedResult: false
+  },
+  {
+    fn: ValidateEmail,
+    input: ".hee8@test.com",
+    expectedResult: false
+  },
+  {
+    fn: ValidateEmail,
+    input: "hee8.@test.com",
+    expectedResult: false
+  },
+  {
+    fn: ValidateLocal,
+    input: ".hee8",
+    expectedResult: false
+  },
+  {
+    fn: ValidateLocal,
+    input: "he.e.8",
+    expectedResult: true
+  },
+  {
+    fn: ValidateLocal,
+    input: "he>e8",
+    expectedResult: false
+  },
+  {
+    fn: ValidateLocal,
+    input: "hee8.",
+    expectedResult: false
+  },
+  {
+    fn: ValidateLocal,
+    input: "`1234567890-=~!#$%&'*.+/=?^_{|}",
+    expectedResult: true
+  },
+  {
+    fn: ValidateLocal,
+    input: "`1234567890-=..~!#$%&'*.+/=?^_{|}",
+    expectedResult: false
+  },
+  {
+    fn: ValidateLocal,
+    input: "j.dweezy",
+    expectedResult: true
+  },
+  {
+    fn: ValidateLocal,
+    input: "arNOld",
+    expectedResult: true
+  },
+  {
+    fn: ValidateDomain,
+    input: "g127843leinfo",
+    expectedResult: false
+  },
+  {
+    fn: ValidateDomain,
+    input: "g127843le.info",
+    expectedResult: true
+  },
+  {
+    fn: ValidateDomain,
+    input: "hhh.g127843le.info",
+    expectedResult: true
+  },
+  {
+    fn: ValidateDomain,
+    input: "google-.com",
+    expectedResult: false
+  },
+  {
+    fn: ValidateDomain,
+    input: "goog*le.com",
+    expectedResult: false
+  },
+  {
+    fn: ValidateDomain,
+    input: "-google.com",
+    expectedResult: false
+  },
+  {
+    fn: ValidateDomain,
+    input: "google.com",
+    expectedResult: true
+  },
+  {
+    fn: ValidateDomain,
+    input: "goo-gle.com",
+    expectedResult: true
+  },
+  {
+    fn: ValidateDomain,
+    input: "google..com",
+    expectedResult: false
+  },
+  {
+    fn: ParseEmails,
+    input: "",
+    expectedResult: [
+      "No email addresses specified"
+    ]
+  },
+  {
+    fn: ParseEmails,
+    input: " ",
+    expectedResult: [
+      "No email addresses specified"
+    ]
+  },
+  {
+    fn: ParseEmails,
+    input: "~!#$%^&*()_+`1234567890-=[]\\{}|;':,./<>?'",
+    expectedResult: [
+      "No email addresses specified"
+    ]
+  },
+  {
+    fn: ParseEmails,
+    input: "\"Bob Jones\" bob@example.com Bob bob@example.com bob@example.com bob@example.com",
+    expectedResult: [
+      true,
+      {name: "Bob Jones", email: "bob@example.com"}
+    ]
+  },
+  {
+    fn: ParseEmails,
+    input: "'Arnold Waverly' <arnie@test.com>; Arnie arnie@test.com; arnie@test.com; arnie@test.com",
+    expectedResult: [
+      true,
+      {name: "Arnold Waverly", email: "arnie@test.com"}
+    ]
+  },
+  {
+    fn: ParseEmails,
+    input: "\"Arnold Waverly\"arnie@test.com Arnie arnie@test.com; arnold@bgtest.net",
+    expectedResult: [
+      true,
+      {name: "Arnold Waverly", email: "arnie@test.com"},
+      {name: "", email: "arnold@bgtest.net"}
+    ]
+  },
+  {
+    fn: ParseEmails,
+    input: "<Carolyn Vaught> carolyn@agg.info, George george@agg.info, pepp@agg",
+    expectedResult: [
+      "Invalid email address: pepp@agg",
+      {name: "Carolyn Vaught", email: "carolyn@agg.info"},
+      {name: "George", email: "george@agg.info"}
+    ]
+  },
+  {
+    fn: ParseEmails,
+    input: "Elizabeth> lizzie@test.com George georg<@test.com Bobby bob..by@test.com Bobby .bobby@test.com Bobby bobby.@test.com Bobby bobby@test.com",
+    expectedResult: [
+      "Invalid email addresses: @test.com, bob..by@test.com, .bobby@test.com, bobby.@test.com",
+      {name: "Elizabeth", email: "lizzie@test.com"},
+      {name: "Bobby", email: "bobby@test.com"}
+    ]
+  }
+];
+
+
+function RunTests(targetId) {
+
+  var target = document.getElementById(targetId);
+  if(typeof target == "undefined") {
+    alert("Target object with Id " + targetId + " does not exist to display test results in");
+    return;
+  }
+
+
+  var succeeded = 0;
+  var failures = [];
+
+  for(var i = 0; i < tests.length; i++) {
+    var test = tests[i];
+
+    var result = test.fn(test.input);
+
+    if(JSON.stringify(result) == JSON.stringify(test.expectedResult)) {
+      succeeded++;
+    } else {
+      failures.push(test.fn.name + " with input \"" + test.input + "\"<br>Expected result: " + JSON.stringify(test.expectedResult) + "<br>Actual result: " + JSON.stringify(result));
+    }
+  }
+
+
+  var resultsHTML = "<span class=\"succeeded\">Tests successful: " + succeeded + "</span><hr>";
+
+  if(failures.length > 0) {
+    resultsHTML += "<span class=\"failure\">Tests failed: " + failures.length + "</span><hr>";
+  }
+
+  for(i = 0; i < failures.length; i++) {
+    resultsHTML += "<span class=\"failure\">Failed test: " + failures[i] + "</span><hr>"; 
+  }
+
+  target.innerHTML = resultsHTML;
+}
+
+
+</script>
+
+</body>
+
+</html>
